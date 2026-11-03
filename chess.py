@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# yo this is totally not vibe coded by claude sonnet 5 at medium
 """
 Terminal Chess vs Bot — WASD + Spacebar controls (single-file version)
 Run with: python3 chess_wasd.py
@@ -559,11 +558,17 @@ def draw(win, state, cursor, selected, targets, flip, status_lines):
 
     top, left = 1, 4
     header = "   " + "".join(f" {files[c]} " for c in cols)
-    win.addstr(top, left - 2, header)
+    try:
+        win.addstr(top, left - 2, header)
+    except curses.error:
+        pass
 
     for i, r in enumerate(rows):
         y = top + 1 + i
-        win.addstr(y, left - 3, f"{r + 1:2} ")
+        try:
+            win.addstr(y, left - 3, f"{r + 1:2} ")
+        except curses.error:
+            pass
         x = left
         for c in cols:
             piece = state["board"][r][c]
@@ -585,9 +590,15 @@ def draw(win, state, cursor, selected, targets, flip, status_lines):
             except curses.error:
                 pass
             x += 3
-        win.addstr(y, x, f" {r + 1}")
+        try:
+            win.addstr(y, x, f" {r + 1}")
+        except curses.error:
+            pass
 
-    win.addstr(top + 10, left - 2, header)
+    try:
+        win.addstr(top + 10, left - 2, header)
+    except curses.error:
+        pass
 
     status_y = top + 12
     for line in status_lines:
@@ -601,8 +612,15 @@ def draw(win, state, cursor, selected, targets, flip, status_lines):
 
 
 def ask_promotion(win, status_row):
-    win.addstr(status_row, 2, "Promote to:  (q)ueen  (r)ook  (b)ishop  (n)knight     ")
-    win.refresh()
+    # FIX: addstr can raise _curses.error (addwstr() returned ERR) if the
+    # terminal is too small or the text would hit the edge of the window.
+    # Wrap it like the rest of the draw code does, so it degrades
+    # gracefully instead of crashing the whole game.
+    try:
+        win.addstr(status_row, 2, "Promote to:  (q)ueen  (r)ook  (b)ishop  (n)knight     ")
+        win.refresh()
+    except curses.error:
+        pass
     win.nodelay(False)
     while True:
         key = win.getch()
@@ -612,8 +630,12 @@ def ask_promotion(win, status_row):
 
 
 def confirm_quit(win, status_row):
-    win.addstr(status_row, 2, "Quit game? (y/n)                                       ")
-    win.refresh()
+    # FIX: same guard as ask_promotion, see note above.
+    try:
+        win.addstr(status_row, 2, "Quit game? (y/n)                                       ")
+        win.refresh()
+    except curses.error:
+        pass
     while True:
         key = win.getch()
         ch = chr(key).lower() if 0 <= key < 256 else ""
@@ -627,6 +649,22 @@ def play(stdscr, player_color, level):
     curses.curs_set(0)
     init_colors()
     stdscr.keypad(1)
+
+    # FIX: warn instead of crashing if the terminal window is too small
+    # for the board + status lines to fit (this was the likely root
+    # cause of the addwstr() ERR on the promotion prompt).
+    max_y, max_x = stdscr.getmaxyx()
+    if max_y < 20 or max_x < 40:
+        stdscr.erase()
+        try:
+            stdscr.addstr(0, 0, "Terminal window is too small for this game.")
+            stdscr.addstr(1, 0, "Please resize to at least 40x20 and run again.")
+            stdscr.addstr(3, 0, "Press any key to exit...")
+        except curses.error:
+            pass
+        stdscr.refresh()
+        stdscr.getch()
+        return
 
     state = initial_state()
     flip = player_color == "b"
